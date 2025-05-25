@@ -246,4 +246,4 @@ For questions, issues, or suggestions:
 
 ---
 
-**File Encryptor Pro** - Secure, Fast, Professional File Encryption Solution
+CryptXpress - Secure, Fast, Professional File Encryption Solution
