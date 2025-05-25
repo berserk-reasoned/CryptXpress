@@ -14,7 +14,7 @@ A modern Java application for secure file encryption and decryption with databas
 - **Progress Tracking**: Real-time progress indicators
 - **Responsive Design**: Adaptive UI components
 
-## Screenshots 📸
+
 
 ### Main Encryption Interface
 - Clean, modern dark theme
@@ -235,7 +235,7 @@ This project meets all specified marking criteria:
 
 ## License 📄
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is not licensed.
 
 ## Support 💬
 
