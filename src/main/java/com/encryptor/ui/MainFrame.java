@@ -4,450 +4,430 @@ import com.encryptor.dao.OperationDAO;
 import com.encryptor.model.OperationRecord;
 import com.encryptor.service.EncryptionService;
 import com.encryptor.service.EncryptionService.EncryptionMethod;
-import com.encryptor.service.EncryptionService.EncryptionResult;
 
-import javax.crypto.spec.IvParameterSpec;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.filechooser.FileNameExtensionFilter;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 public class MainFrame extends JFrame {
-    private JPanel mainPanel;
-    private JPanel operationPanel;
-    private JPanel historyPanel;
-    private JTabbedPane tabbedPane;
+    private static final Color BACKGROUND = new Color(28, 28, 30);
+    private static final Color CARD_BACKGROUND = new Color(45, 45, 50);
+    private static final Color PRIMARY = new Color(0, 150, 255);
     
-    // Operation components
-    private JLabel fileLabel;
-    private OvalButton selectFileBtn;
-    private JComboBox<EncryptionMethod> encryptionCombo;
-    private OvalButton encryptBtn;
-    private OvalButton decryptBtn;
-    private JTextArea keyArea;
-    private JTextField keyInputField;
-    private JProgressBar progressBar;
-    private JLabel statusLabel;
-    
-    // History components
-    private JTable historyTable;
-    private DefaultTableModel tableModel;
-    
-    // Service and DAO
+    private File selectedFile;
     private EncryptionService encryptionService;
     private OperationDAO operationDAO;
     
-    // Selected file
-    private File selectedFile;
-    
+    private JLabel fileLabel;
+    private JComboBox<EncryptionMethod> methodCombo;
+    private JTextArea keyArea;
+    private JTextField keyField;
+    private JProgressBar progressBar;
+    private JLabel statusLabel;
+    private DefaultTableModel historyModel;
+
     public MainFrame() {
-        initializeServices();
-        initializeUI();
-        setupEventHandlers();
+        initServices();
+        initUI();
         loadHistory();
     }
-    
-    private void initializeServices() {
+
+    private void initServices() {
         encryptionService = new EncryptionService();
         operationDAO = new OperationDAO();
     }
-    
-    private void initializeUI() {
-        setTitle("File Encryptor Pro");
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1000, 800);
+
+    private void initUI() {
+        setTitle("SecureCrypt Pro");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setSize(1200, 800);
         setLocationRelativeTo(null);
-        
-        // Modern UI styling
+
         try {
             UIManager.setLookAndFeel("com.formdev.flatlaf.FlatDarkLaf");
-            SwingUtilities.updateComponentTreeUI(this);
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
-        
-        createMainLayout();
-        styleComponents();
-    }
-    
-    private void createMainLayout() {
-        mainPanel = new JPanel(new BorderLayout());
-        mainPanel.setBackground(new Color(28, 28, 30));
-        
-        // Create header
-        JPanel headerPanel = createHeaderPanel();
-        
-        // Create tabbed pane
-        tabbedPane = new JTabbedPane();
-        tabbedPane.setBackground(new Color(40, 40, 45));
-        tabbedPane.setForeground(Color.WHITE);
-        
-        // Create operation panel
-        operationPanel = createOperationPanel();
-        tabbedPane.addTab("🔐 Operations", operationPanel);
-        
-        // Create history panel
-        historyPanel = createHistoryPanel();
-        tabbedPane.addTab("📜 History", historyPanel);
-        
-        mainPanel.add(headerPanel, BorderLayout.NORTH);
-        mainPanel.add(tabbedPane, BorderLayout.CENTER);
-        
+
+        JPanel mainPanel = new JPanel(new BorderLayout());
+        mainPanel.setBackground(BACKGROUND);
+        mainPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+
+        // Header
+        JPanel header = createHeader();
+        mainPanel.add(header, BorderLayout.NORTH);
+
+        // Content Tabs
+        JTabbedPane tabs = new JTabbedPane();
+        tabs.add("Operations", createOperationsPanel());
+        tabs.add("History", createHistoryPanel());
+        mainPanel.add(tabs, BorderLayout.CENTER);
+
         add(mainPanel);
     }
-    
-    private JPanel createHeaderPanel() {
-        JPanel header = new JPanel();
-        header.setBackground(new Color(23, 23, 25));
-        header.setBorder(new EmptyBorder(25, 40, 25, 40));
-        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
-        
-        JLabel titleLabel = new JLabel("SecureCrypt");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 32));
-        titleLabel.setForeground(new Color(0, 200, 255));
-        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        
-        JLabel subtitleLabel = new JLabel("Military-Grade File Encryption");
-        subtitleLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        subtitleLabel.setForeground(new Color(160, 160, 160));
-        subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        
-        header.add(titleLabel);
-        header.add(Box.createVerticalStrut(5));
-        header.add(subtitleLabel);
-        
-        return header;
-    }
-    
-    private JPanel createOperationPanel() {
+
+    private JPanel createHeader() {
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(35, 35, 40));
-        panel.setBorder(new EmptyBorder(30, 40, 30, 40));
-        
-        // File selection section
-        JPanel fileSection = createFileSelectionSection();
-        
-        // Encryption options section
-        JPanel optionsSection = createEncryptionOptionsSection();
-        
-        // Action buttons section
-        JPanel actionsSection = createActionsSection();
-        
-        // Key display section
-        JPanel keySection = createKeySection();
-        
-        // Status section
-        JPanel statusSection = createStatusSection();
-        
-        // Layout
-        JPanel contentPanel = new JPanel();
-        contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
-        contentPanel.setBackground(new Color(35, 35, 40));
-        
-        contentPanel.add(fileSection);
-        contentPanel.add(Box.createVerticalStrut(20));
-        contentPanel.add(optionsSection);
-        contentPanel.add(Box.createVerticalStrut(20));
-        contentPanel.add(actionsSection);
-        contentPanel.add(Box.createVerticalStrut(20));
-        contentPanel.add(keySection);
-        
-        panel.add(contentPanel, BorderLayout.CENTER);
-        panel.add(statusSection, BorderLayout.SOUTH);
+        panel.setBackground(BACKGROUND);
+        panel.setBorder(new EmptyBorder(0, 0, 20, 0));
+
+        JLabel title = new JLabel("SecureCrypt");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 32));
+        title.setForeground(PRIMARY);
+
+        JLabel subtitle = new JLabel("Military-Grade File Encryption");
+        subtitle.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        subtitle.setForeground(Color.GRAY);
+
+        panel.add(title, BorderLayout.WEST);
+        panel.add(subtitle, BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private JPanel createOperationsPanel() {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(BACKGROUND);
+
+        // File Selection Card
+        panel.add(createFileCard());
+        panel.add(Box.createVerticalStrut(20));
+
+        // Encryption Card
+        panel.add(createEncryptionCard());
+        panel.add(Box.createVerticalStrut(20));
+
+        // Actions Card
+        panel.add(createActionCard());
+        panel.add(Box.createVerticalStrut(20));
+
+        // Key Card
+        panel.add(createKeyCard());
+        panel.add(Box.createVerticalStrut(20));
+
+        // Status Bar
+        panel.add(createStatusBar());
         
         return panel;
     }
-    
-    private JPanel createFileSelectionSection() {
-        JPanel section = new JPanel();
-        section.setLayout(new BoxLayout(section, BoxLayout.X_AXIS));
-        section.setBackground(new Color(45, 45, 50));
-        section.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(60, 60, 65)),
-            new EmptyBorder(15, 20, 15, 20)
-        ));
-        
-        JLabel iconLabel = new JLabel("📁");
-        iconLabel.setFont(new Font("Segoe UI", Font.PLAIN, 24));
-        iconLabel.setForeground(new Color(180, 180, 180));
-        
+
+    private JPanel createFileCard() {
+        JPanel card = new JPanel(new BorderLayout());
+        styleCard(card, "📁 File Selection");
+
+        JPanel content = new JPanel(new BorderLayout());
+        content.setBackground(CARD_BACKGROUND);
+
         fileLabel = new JLabel("No file selected");
-        fileLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        fileLabel.setForeground(new Color(200, 200, 200));
-        
-        selectFileBtn = new OvalButton("Browse Files");
-        selectFileBtn.setBackground(new Color(0, 120, 215));
-        selectFileBtn.setForeground(Color.WHITE);
-        selectFileBtn.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        
-        JPanel textPanel = new JPanel();
-        textPanel.setLayout(new BoxLayout(textPanel, BoxLayout.Y_AXIS));
-        textPanel.setBackground(new Color(45, 45, 50));
-        textPanel.add(fileLabel);
-        textPanel.add(Box.createVerticalStrut(5));
-        textPanel.add(selectFileBtn);
-        
-        section.add(iconLabel);
-        section.add(Box.createHorizontalStrut(20));
-        section.add(textPanel);
-        
-        return section;
+        fileLabel.setForeground(Color.WHITE);
+
+        OvalButton browseBtn = new OvalButton("Choose File");
+        browseBtn.setBackground(PRIMARY);
+        browseBtn.addActionListener(this::selectFile);
+
+        content.add(fileLabel, BorderLayout.CENTER);
+        content.add(browseBtn, BorderLayout.EAST);
+        card.add(content, BorderLayout.CENTER);
+
+        return card;
     }
-    
-    private JPanel createEncryptionOptionsSection() {
-        JPanel section = new JPanel();
-        section.setLayout(new BoxLayout(section, BoxLayout.Y_AXIS));
-        section.setBackground(new Color(45, 45, 50));
-        section.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(60, 60, 65)),
-            new EmptyBorder(15, 20, 15, 20)
-        ));
-        
-        JLabel titleLabel = new JLabel("🔒 Encryption Settings");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        titleLabel.setForeground(Color.WHITE);
-        
-        encryptionCombo = new JComboBox<>(EncryptionMethod.values());
-        encryptionCombo.setBackground(new Color(55, 55, 60));
-        encryptionCombo.setForeground(Color.WHITE);
-        encryptionCombo.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        encryptionCombo.setRenderer(new ModernComboBoxRenderer());
-        
-        JLabel keyInputLabel = new JLabel("Decryption Key:");
-        keyInputLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        keyInputLabel.setForeground(new Color(180, 180, 180));
-        
-        keyInputField = new JTextField();
-        keyInputField.setBackground(new Color(55, 55, 60));
-        keyInputField.setForeground(Color.WHITE);
-        keyInputField.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        keyInputField.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(80, 80, 85)),
+
+    private JPanel createEncryptionCard() {
+        JPanel card = new JPanel(new BorderLayout());
+        styleCard(card, "🔒 Encryption Settings");
+
+        JPanel content = new JPanel();
+        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+        content.setBackground(CARD_BACKGROUND);
+
+        // Method Selection
+        methodCombo = new JComboBox<>(EncryptionMethod.values());
+        styleComboBox(methodCombo);
+
+        // Key Input
+        keyField = new JTextField();
+        keyField.setForeground(Color.WHITE);
+        keyField.setBackground(CARD_BACKGROUND);
+        keyField.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(Color.DARK_GRAY),
             new EmptyBorder(8, 12, 8, 12)
         ));
-        
-        section.add(titleLabel);
-        section.add(Box.createVerticalStrut(15));
-        section.add(encryptionCombo);
-        section.add(Box.createVerticalStrut(15));
-        section.add(keyInputLabel);
-        section.add(Box.createVerticalStrut(5));
-        section.add(keyInputField);
-        
-        return section;
+
+        content.add(createLabel("Encryption Method:"));
+        content.add(Box.createVerticalStrut(5));
+        content.add(methodCombo);
+        content.add(Box.createVerticalStrut(15));
+        content.add(createLabel("Decryption Key:"));
+        content.add(Box.createVerticalStrut(5));
+        content.add(keyField);
+
+        card.add(content, BorderLayout.CENTER);
+        return card;
     }
-    
-    private JPanel createActionsSection() {
-        JPanel section = new JPanel();
-        section.setLayout(new GridLayout(1, 2, 20, 0));
-        section.setBackground(new Color(35, 35, 40));
-        
-        encryptBtn = new OvalButton("🔐 Encrypt");
-        encryptBtn.setBackground(new Color(0, 200, 150));
-        encryptBtn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        
-        decryptBtn = new OvalButton("🔓 Decrypt");
-        decryptBtn.setBackground(new Color(255, 95, 90));
-        decryptBtn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        
-        section.add(encryptBtn);
-        section.add(decryptBtn);
-        
-        return section;
+
+    private JPanel createActionCard() {
+        JPanel card = new JPanel(new GridLayout(1, 2, 20, 0));
+        card.setBackground(BACKGROUND);
+
+        OvalButton encryptBtn = new OvalButton("🔐 Encrypt");
+        encryptBtn.setBackground(new Color(76, 175, 80));
+        encryptBtn.addActionListener(this::encryptFile);
+
+        OvalButton decryptBtn = new OvalButton("🔓 Decrypt");
+        decryptBtn.setBackground(new Color(244, 67, 54));
+        decryptBtn.addActionListener(this::decryptFile);
+
+        card.add(encryptBtn);
+        card.add(decryptBtn);
+        return card;
     }
-    
-    private JPanel createKeySection() {
-        JPanel section = new JPanel(new BorderLayout());
-        section.setBackground(new Color(45, 45, 50));
-        section.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(60, 60, 65)),
-            new EmptyBorder(15, 20, 15, 20)
-        ));
-        
-        JLabel titleLabel = new JLabel("🔑 Encryption Key");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        titleLabel.setForeground(Color.WHITE);
-        
-        keyArea = new JTextArea(3, 50);
-        keyArea.setBackground(new Color(30, 30, 35));
-        keyArea.setForeground(new Color(0, 255, 150));
-        keyArea.setFont(new Font("Consolas", Font.PLAIN, 12));
+
+    private JPanel createKeyCard() {
+        JPanel card = new JPanel(new BorderLayout());
+        styleCard(card, "🔑 Encryption Key");
+
+        keyArea = new JTextArea(3, 20);
         keyArea.setEditable(false);
         keyArea.setLineWrap(true);
-        keyArea.setWrapStyleWord(true);
-        keyArea.setBorder(new EmptyBorder(10, 10, 10, 10));
-        
-        JScrollPane scrollPane = new JScrollPane(keyArea);
-        scrollPane.setBorder(null);
-        
-        section.add(titleLabel, BorderLayout.NORTH);
-        section.add(Box.createVerticalStrut(10));
-        section.add(scrollPane, BorderLayout.CENTER);
-        
-        return section;
+        keyArea.setForeground(new Color(0, 255, 127));
+        keyArea.setBackground(CARD_BACKGROUND);
+        keyArea.setBorder(new EmptyBorder(10, 15, 10, 15));
+
+        card.add(new JScrollPane(keyArea), BorderLayout.CENTER);
+        return card;
     }
-    
-    private JPanel createStatusSection() {
-        JPanel section = new JPanel(new BorderLayout());
-        section.setBackground(new Color(35, 35, 40));
-        section.setBorder(new EmptyBorder(20, 0, 0, 0));
-        
+
+    private JPanel createStatusBar() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(BACKGROUND);
+
         progressBar = new JProgressBar();
         progressBar.setStringPainted(true);
-        progressBar.setBackground(new Color(50, 50, 55));
-        progressBar.setForeground(new Color(0, 200, 255));
-        progressBar.setBorder(new EmptyBorder(5, 0, 5, 0));
-        
+        progressBar.setForeground(PRIMARY);
+        progressBar.setBackground(CARD_BACKGROUND);
+
         statusLabel = new JLabel("Ready");
-        statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        statusLabel.setForeground(new Color(180, 180, 180));
-        
-        section.add(progressBar, BorderLayout.NORTH);
-        section.add(statusLabel, BorderLayout.SOUTH);
-        
-        return section;
-    }
-    
-    private JPanel createHistoryPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(new Color(35, 35, 40));
-        panel.setBorder(new EmptyBorder(20, 20, 20, 20));
-        
-        // Table
-        String[] columns = {"ID", "File Name", "Operation", "Method", "Date", "Status"};
-        tableModel = new DefaultTableModel(columns, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        
-        historyTable = new JTable(tableModel);
-        historyTable.setBackground(new Color(45, 45, 50));
-        historyTable.setForeground(Color.WHITE);
-        historyTable.setGridColor(new Color(60, 60, 65));
-        historyTable.setSelectionBackground(new Color(0, 150, 255));
-        historyTable.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        historyTable.getTableHeader().setBackground(new Color(30, 30, 35));
-        historyTable.getTableHeader().setForeground(Color.WHITE);
-        historyTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
-        
-        JScrollPane scrollPane = new JScrollPane(historyTable);
-        scrollPane.setBorder(null);
-        
-        panel.add(scrollPane, BorderLayout.CENTER);
-        
+        statusLabel.setForeground(Color.GRAY);
+
+        panel.add(progressBar, BorderLayout.NORTH);
+        panel.add(statusLabel, BorderLayout.SOUTH);
         return panel;
     }
-    
-    private void styleComponents() {
-        // Add hover effects
-        addHoverEffect(selectFileBtn, new Color(0, 120, 215), new Color(0, 140, 235));
-        addHoverEffect(encryptBtn, new Color(0, 200, 150), new Color(0, 220, 170));
-        addHoverEffect(decryptBtn, new Color(255, 95, 90), new Color(255, 115, 110));
-        
-        // Add component shadows
-        addComponentShadow(operationPanel);
-        addComponentShadow(historyPanel);
+
+    private JPanel createHistoryPanel() {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(BACKGROUND);
+
+        String[] columns = {"Date", "Operation", "File", "Status"};
+        historyModel = new DefaultTableModel(columns, 0);
+        JTable table = new JTable(historyModel);
+        styleTable(table);
+
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setBorder(null);
+        panel.add(scrollPane, BorderLayout.CENTER);
+
+        return panel;
     }
-    
-    private void addHoverEffect(OvalButton button, Color normal, Color hover) {
-        button.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseEntered(java.awt.event.MouseEvent evt) {
-                button.setBackground(hover);
-            }
-            
-            public void mouseExited(java.awt.event.MouseEvent evt) {
-                button.setBackground(normal);
+
+    // Helper Methods
+    private void styleCard(JPanel card, String title) {
+        card.setBackground(BACKGROUND);
+        card.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createTitledBorder(title),
+            new EmptyBorder(15, 15, 15, 15)
+        ));
+    }
+
+    private void styleComboBox(JComboBox<?> combo) {
+        combo.setBackground(CARD_BACKGROUND);
+        combo.setForeground(Color.WHITE);
+        combo.setRenderer(new DefaultListCellRenderer() {
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index,
+                    boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                setBackground(isSelected ? PRIMARY : CARD_BACKGROUND);
+                setForeground(Color.WHITE);
+                return this;
             }
         });
     }
-    
-    private void addComponentShadow(JComponent component) {
-        component.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createMatteBorder(0, 0, 2, 2, new Color(0, 0, 0, 30)),
-            component.getBorder()
-        ));
+
+    private JLabel createLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setForeground(Color.GRAY);
+        label.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        return label;
     }
-    
-    private void setupEventHandlers() {
-        selectFileBtn.addActionListener(this::selectFile);
-        encryptBtn.addActionListener(this::encryptFile);
-        decryptBtn.addActionListener(this::decryptFile);
+
+    private void styleTable(JTable table) {
+        table.setBackground(CARD_BACKGROUND);
+        table.setForeground(Color.WHITE);
+        table.setGridColor(Color.DARK_GRAY);
+        table.setSelectionBackground(PRIMARY);
+        table.getTableHeader().setBackground(BACKGROUND);
+        table.getTableHeader().setForeground(Color.WHITE);
     }
-    
-    // ... Rest of the methods (selectFile, encryptFile, decryptFile, loadHistory) remain same as previous
-    // with the following changes:
-    
+
+    // Event Handlers
+    private void selectFile(ActionEvent e) {
+        JFileChooser chooser = new JFileChooser();
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            selectedFile = chooser.getSelectedFile();
+            fileLabel.setText(selectedFile.getName());
+        }
+    }
+
+    private void encryptFile(ActionEvent e) {
+        if (selectedFile == null) {
+            showError("No file selected!", "Select a file first");
+            return;
+        }
+
+        new SwingWorker<Void, Void>() {
+            protected Void doInBackground() throws Exception {
+                setProgressUI(true, "Encrypting...");
+                
+                EncryptionMethod method = (EncryptionMethod) methodCombo.getSelectedItem();
+                byte[] encrypted = encryptionService.encryptFile(selectedFile, method);
+                saveResult(encrypted, ".encrypted", "ENCRYPT", method);
+                
+                return null;
+            }
+            
+            protected void done() {
+                setProgressUI(false, "Encryption complete");
+                resetUI();
+                loadHistory();
+            }
+        }.execute();
+    }
+
+    private void decryptFile(ActionEvent e) {
+        if (selectedFile == null || !selectedFile.getName().endsWith(".encrypted")) {
+            showError("Invalid file!", "Select an encrypted file");
+            return;
+        }
+
+        new SwingWorker<Void, Void>() {
+            protected Void doInBackground() throws Exception {
+                setProgressUI(true, "Decrypting...");
+                
+                EncryptionMethod method = (EncryptionMethod) methodCombo.getSelectedItem();
+                byte[] decrypted = encryptionService.decryptFile(
+                    Files.readAllBytes(selectedFile.toPath()),
+                    keyField.getText(),
+                    method
+                );
+                
+                String originalName = selectedFile.getName().replace(".encrypted", "");
+                saveResult(decrypted, "", "DECRYPT", method, originalName);
+                
+                return null;
+            }
+            
+            protected void done() {
+                setProgressUI(false, "Decryption complete");
+                resetUI();
+                loadHistory();
+            }
+        }.execute();
+    }
+
+    private void saveResult(byte[] data, String suffix, String operation, EncryptionMethod method) {
+        saveResult(data, suffix, operation, method, selectedFile.getName());
+    }
+
+    private void saveResult(byte[] data, String suffix, String operation, 
+                          EncryptionMethod method, String fileName) {
+        JFileChooser saver = new JFileChooser();
+        saver.setSelectedFile(new File(fileName + suffix));
+        
+        if (saver.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try {
+                Files.write(saver.getSelectedFile().toPath(), data);
+                logOperation(operation, method, "SUCCESS");
+            } catch (Exception ex) {
+                logOperation(operation, method, "FAILED");
+                showError("Save failed", ex.getMessage());
+            }
+        }
+    }
+
+    // Utility Methods
+    private void setProgressUI(boolean working, String message) {
+        progressBar.setIndeterminate(working);
+        statusLabel.setText(message);
+    }
+
     private void resetUI() {
         selectedFile = null;
         fileLabel.setText("No file selected");
-        keyInputField.setText("");
+        keyField.setText("");
         keyArea.setText("");
-        statusLabel.setText("Ready");
-        progressBar.setValue(0);
-    }
-    
-    // Update file naming in decryptFile method:
-    String originalName = selectedFile.getName();
-    if (originalName.endsWith(".encrypted")) {
-        originalName = originalName.substring(0, originalName.lastIndexOf(".encrypted"));
-    }
-}
-
-class OvalButton extends JButton {
-    public OvalButton(String text) {
-        super(text);
-        setContentAreaFilled(false);
-        setFocusPainted(false);
-        setBorderPainted(false);
-        setForeground(Color.WHITE);
-        setFont(new Font("Segoe UI", Font.BOLD, 14));
     }
 
-    @Override
-    protected void paintComponent(Graphics g) {
-        Graphics2D g2 = (Graphics2D) g.create();
-        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+    private void showError(String title, String message) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.ERROR_MESSAGE);
+    }
+
+    private void logOperation(String type, EncryptionMethod method, String status) {
+        operationDAO.insertOperation(new OperationRecord(
+            selectedFile.getName(),
+            type,
+            method.name(),
+            status
+        ));
+    }
+
+    private void loadHistory() {
+        historyModel.setRowCount(0);
+        List<OperationRecord> records = operationDAO.getAllOperations();
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
         
-        if (getModel().isPressed()) {
-            g2.setColor(getBackground().darker());
-        } else if (getModel().isRollover()) {
-            g2.setColor(getBackground().brighter());
-        } else {
-            g2.setColor(getBackground());
+        records.forEach(record -> historyModel.addRow(new Object[]{
+            record.getTimestamp().format(dtf),
+            record.getOperationType(),
+            record.getFileName(),
+            record.getStatus()
+        }));
+    }
+
+    // Custom Components
+    class OvalButton extends JButton {
+        OvalButton(String text) {
+            super(text);
+            setContentAreaFilled(false);
+            setForeground(Color.WHITE);
+            setFont(new Font("Segoe UI", Font.BOLD, 14));
+            setBorder(new EmptyBorder(12, 30, 12, 30));
         }
-        
-        g2.fillRoundRect(0, 0, getWidth(), getHeight(), 40, 40);
-        super.paintComponent(g2);
-        g2.dispose();
-    }
-}
 
-class ModernComboBoxRenderer extends DefaultListCellRenderer {
-    @Override
-    public Component getListCellRendererComponent(JList<?> list, Object value, int index, 
-            boolean isSelected, boolean cellHasFocus) {
-        JLabel label = (JLabel) super.getListCellRendererComponent(
-            list, value, index, isSelected, cellHasFocus);
-        
-        label.setBackground(new Color(55, 55, 60));
-        label.setForeground(Color.WHITE);
-        label.setBorder(new EmptyBorder(8, 12, 8, 12));
-        
-        if (isSelected) {
-            label.setBackground(new Color(0, 120, 215));
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            
+            if (getModel().isPressed()) {
+                g2.setColor(getBackground().darker());
+            } else if (getModel().isRollover()) {
+                g2.setColor(getBackground().brighter());
+            } else {
+                g2.setColor(getBackground());
+            }
+            
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 40, 40);
+            super.paintComponent(g2);
+            g2.dispose();
         }
-        
-        return label;
+    }
+
+    public static void main(String[] args) {
+        EventQueue.invokeLater(() -> new MainFrame().setVisible(true));
     }
 }
