@@ -13,16 +13,15 @@ import java.util.List;
  */
 public class OperationDAO {
     private static final String DB_URL = "jdbc:sqlite:cryptxpress_history.db";
-    private static final String CREATE_TABLE_SQL = """
-        CREATE TABLE IF NOT EXISTS operations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_name TEXT NOT NULL,
-            operation_type TEXT NOT NULL,
-            method TEXT NOT NULL,
-            status TEXT NOT NULL,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        """;
+    private static final String CREATE_TABLE_SQL = 
+        "CREATE TABLE IF NOT EXISTS operations (" +
+        "    id INTEGER PRIMARY KEY AUTOINCREMENT," +
+        "    file_name TEXT NOT NULL," +
+        "    operation_type TEXT NOT NULL," +
+        "    method TEXT NOT NULL," +
+        "    status TEXT NOT NULL," +
+        "    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP" +
+        ")";
 
     public OperationDAO() {
         try {
@@ -66,10 +65,8 @@ public class OperationDAO {
             return false;
         }
 
-        String sql = """
-            INSERT INTO operations (file_name, operation_type, method, status, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-            """;
+        String sql = "INSERT INTO operations (file_name, operation_type, method, status, timestamp) " +
+                    "VALUES (?, ?, ?, ?, ?)";
 
         try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -231,14 +228,12 @@ public class OperationDAO {
      * Get operation statistics
      */
     public OperationStats getOperationStats() {
-        String sql = """
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as successful,
-                SUM(CASE WHEN operation_type = 'ENCRYPT' THEN 1 ELSE 0 END) as encryptions,
-                SUM(CASE WHEN operation_type = 'DECRYPT' THEN 1 ELSE 0 END) as decryptions
-            FROM operations
-            """;
+        String sql = "SELECT " +
+                    "    COUNT(*) as total," +
+                    "    SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as successful," +
+                    "    SUM(CASE WHEN operation_type = 'ENCRYPT' THEN 1 ELSE 0 END) as encryptions," +
+                    "    SUM(CASE WHEN operation_type = 'DECRYPT' THEN 1 ELSE 0 END) as decryptions " +
+                    "FROM operations";
 
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement();
