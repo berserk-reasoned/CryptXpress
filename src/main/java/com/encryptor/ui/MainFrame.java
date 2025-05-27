@@ -15,7 +15,31 @@ import java.time.LocalDateTime;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.prefs.Preferences;
+package com.encryptor.ui;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.format.DateTimeFormatter;
+
+public class MainFrame extends JFrame {
+    // ... existing fields
+    
+    private void logOperation(OperationRecord record) {
+        operationDAO.logOperation(record);
+        SwingUtilities.invokeLater(() -> {
+            historyModel.addRow(new Object[]{
+                record.timestamp().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                record.operationType(),
+                record.fileName(),
+                record.encryptionMethod(),
+                record.status()
+            });
+        });
+    }
+
+    // ... rest of the implementation matches previous answer
+    // Ensure all references to OperationRecord use the new fields
+}
 public class MainFrame extends JFrame {
     private final EncryptionService cryptoService = new EncryptionService();
     private final OperationDAO operationDAO = new OperationDAO();
