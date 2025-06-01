@@ -1,112 +1,118 @@
-package com.encryptor.service;
+package com.encryptor.security;
 
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import javax.crypto.*;
-import javax.crypto.spec.*;
-import java.io.*;
-import java.nio.file.*;
-import java.security.*;
-import java.util.*;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.ChaCha20ParameterSpec;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.SecureRandom;
+import java.util.Base64;
+import java.util.Map;
 
-public class EncryptionService {
-    static {
-        Security.addProvider(new BouncyCastleProvider());
-    }
+/**
+ * Provides cryptographic key generation and cipher configuration for various encryption algorithms.
+ * Supports AES-256, Blowfish-128, and ChaCha20.
+ */
+public class SecurityServices {
 
-    public enum EncryptionMethod {
-        AES_256("AES", 256, 16, "AES/CBC/PKCS7Padding"),
-        BLOWFISH_128("Blowfish", 128, 8, "Blowfish/CBC/PKCS7Padding"),
-        CHACHA20("ChaCha20", 256, 12, "ChaCha20-Poly1305");
+    private static final int AES_KEY_SIZE = 256;
+    private static final int BLOWFISH_KEY_SIZE = 128;
+    private static final int NONCE_SIZE = 12; // for ChaCha20
 
-        public final String algorithm;
-        public final int keySize;
-        public final int ivSize;
-        public final String transformation;
-
-        EncryptionMethod(String algorithm, int keySize, int ivSize, String transformation) {
-            this.algorithm = algorithm;
-            this.keySize = keySize;
-            this.ivSize = ivSize;
-            this.transformation = transformation;
-        }
-    }
-
-    public static class CryptoResult {
-        private final String key;
-        private final byte[] iv;
-
-        public CryptoResult(String key, byte[] iv) {
-            this.key = key;
-            this.iv = iv;
-        }
-
-        public String getCombinedKey() {
-            return Base64.getEncoder().encodeToString(iv) + ":" + key;
-        }
-    }
-
-    public CryptoResult encryptFile(Path input, EncryptionMethod method) throws CryptoException {
-        try {
-            SecureRandom random = SecureRandom.getInstanceStrong();
-            byte[] iv = new byte[method.ivSize];
-            random.nextBytes(iv);
-
-            KeyGenerator keyGen = KeyGenerator.getInstance(method.algorithm);
-            keyGen.init(method.keySize, random);
-            SecretKey key = keyGen.generateKey();
-
-            Cipher cipher = Cipher.getInstance(method.transformation, "BC");
-            cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
-
-            try (InputStream in = Files.newInputStream(input);
-                 CipherOutputStream out = new CipherOutputStream(
-                     Files.newOutputStream(getOutputPath(input, true)), cipher)) {
-                in.transferTo(out);
+    /**
+     * Generates a secret key for the specified encryption algorithm.
+     *
+     * @param method The encryption method (AES-256, Blowfish-128, ChaCha20)
+     * @return The generated secret key
+     * @throws Exception If key generation fails
+     */
+    public static SecretKey generateKey(String method) throws Exception {
+        KeyGenerator keyGen;
+        switch (method.toUpperCase()) {
+            case "AES-256" -> {
+                keyGen = KeyGenerator.getInstance("AES");
+                keyGen.init(AES_KEY_SIZE);
+                return keyGen.generateKey();
             }
-
-            return new CryptoResult(
-                Base64.getEncoder().encodeToString(key.getEncoded()),
-                iv
-            );
-        } catch (Exception e) {
-            throw new CryptoException("Encryption failed: " + e.getMessage(), e);
-        }
-    }
-
-    public Path decryptFile(Path input, String combinedKey, EncryptionMethod method) 
-            throws CryptoException {
-        try {
-            String[] parts = combinedKey.split(":");
-            if (parts.length != 2) throw new IllegalArgumentException("Invalid key format");
-            
-            byte[] iv = Base64.getDecoder().decode(parts[0]);
-            byte[] keyBytes = Base64.getDecoder().decode(parts[1]);
-            
-            SecretKey key = new SecretKeySpec(keyBytes, method.algorithm);
-            Cipher cipher = Cipher.getInstance(method.transformation, "BC");
-            cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
-
-            try (CipherInputStream in = new CipherInputStream(
-                     Files.newInputStream(input), cipher);
-                 OutputStream out = Files.newOutputStream(getOutputPath(input, false))) {
-                in.transferTo(out);
+            case "BLOWFISH-128" -> {
+                keyGen = KeyGenerator.getInstance("Blowfish");
+                keyGen.init(BLOWFISH_KEY_SIZE);
+                return keyGen.generateKey();
             }
-
-            return getOutputPath(input, false);
-        } catch (Exception e) {
-            throw new CryptoException("Decryption failed: " + e.getMessage(), e);
+            case "CHACHA20" -> {
+                byte[] key = new byte[32];
+                new SecureRandom().nextBytes(key);
+                return new SecretKeySpec(key, "ChaCha20");
+            }
+            default -> throw new IllegalArgumentException("Unsupported encryption method: " + method);
         }
     }
 
-    private Path getOutputPath(Path original, boolean encrypt) {
-        String suffix = encrypt ? ".cryptx" : ".decrypted";
-        return original.resolveSibling(
-            original.getFileName() + suffix);
+    /**
+     * Initializes a Cipher instance for encryption or decryption.
+     *
+     * @param mode        Cipher.ENCRYPT_MODE or Cipher.DECRYPT_MODE
+     * @param method      The encryption method
+     * @param key         The SecretKey used for encryption/decryption
+     * @param parameters  Additional parameters such as IV or nonce if required
+     * @return Configured Cipher instance
+     * @throws Exception If cipher initialization fails
+     */
+    public static Cipher initCipher(int mode, String method, SecretKey key, Map<String, byte[]> parameters) throws Exception {
+        Cipher cipher;
+        switch (method.toUpperCase()) {
+            case "AES-256" -> {
+                cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+                IvParameterSpec ivSpec = new IvParameterSpec(parameters.get("iv"));
+                cipher.init(mode, key, ivSpec);
+            }
+            case "BLOWFISH-128" -> {
+                cipher = Cipher.getInstance("Blowfish/CBC/PKCS5Padding");
+                IvParameterSpec ivSpec = new IvParameterSpec(parameters.get("iv"));
+                cipher.init(mode, key, ivSpec);
+            }
+            case "CHACHA20" -> {
+                cipher = Cipher.getInstance("ChaCha20");
+                ChaCha20ParameterSpec spec = new ChaCha20ParameterSpec(parameters.get("nonce"), 1);
+                cipher.init(mode, key, spec);
+            }
+            default -> throw new IllegalArgumentException("Unsupported encryption method: " + method);
+        }
+        return cipher;
     }
 
-    public static class CryptoException extends Exception {
-        public CryptoException(String message, Throwable cause) {
-            super(message, cause);
-        }
+    /**
+     * Encodes a secret key to Base64 format.
+     *
+     * @param key The secret key
+     * @return Base64 encoded string
+     */
+    public static String encodeKey(SecretKey key) {
+        return Base64.getEncoder().encodeToString(key.getEncoded());
+    }
+
+    /**
+     * Decodes a Base64 encoded key string to a SecretKey.
+     *
+     * @param encodedKey The Base64 encoded key string
+     * @param algorithm  The algorithm name (AES, Blowfish, ChaCha20)
+     * @return SecretKey object
+     */
+    public static SecretKey decodeKey(String encodedKey, String algorithm) {
+        byte[] decoded = Base64.getDecoder().decode(encodedKey);
+        return new SecretKeySpec(decoded, algorithm);
+    }
+
+    /**
+     * Generates a random IV or nonce for encryption use.
+     *
+     * @param length The byte length of the random data
+     * @return Byte array of secure random data
+     */
+    public static byte[] generateRandomBytes(int length) {
+        byte[] bytes = new byte[length];
+        new SecureRandom().nextBytes(bytes);
+        return bytes;
     }
 }
