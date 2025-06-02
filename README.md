@@ -154,7 +154,3 @@ database/
 * Compatible with Java 17 and Maven standard directory structure
 * Uses Bouncy Castle for cryptographic support (configured via Maven)
 * Supports future expansion with additional algorithms and logging features
-
----
-
-Let me know if you want this saved into a `README.md` file or packed into a final `.zip`.
