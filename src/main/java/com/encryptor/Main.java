@@ -22,7 +22,7 @@ public class Main {
             System.err.println("Failed to set FlatLaf theme: " + e.getMessage());
             // Fallback to system look and feel
             try {
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeel());
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
             } catch (Exception ex) {
                 System.err.println("Failed to set system look and feel: " + ex.getMessage());
             }
