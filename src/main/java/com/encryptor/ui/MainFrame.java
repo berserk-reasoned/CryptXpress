@@ -60,6 +60,22 @@ public class MainFrame extends JFrame {
         });
     }
 
+    private static void run() {
+        try {
+            UIManager.setLookAndFeel(new FlatDarkLaf());
+        } catch (UnsupportedLookAndFeelException e) {
+            // Fallback to system look and feel
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception ex) {
+                System.err.println("Failed to set system look and feel: " + ex.getMessage());
+            }
+
+        }
+
+        new MainFrame().setVisible(true);
+    }
+
     private void initializeUI() {
         setTitle("CryptXpress - File Encryption Suite");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -581,18 +597,6 @@ public class MainFrame extends JFrame {
         System.setProperty("awt.useSystemAAFontSettings", "on");
         System.setProperty("swing.aatext", "true");
         
-        SwingUtilities.invokeLater(() -> {
-            try {
-                UIManager.setLookAndFeel(new FlatDarkLaf());
-            } catch (UnsupportedLookAndFeelException e) {
-                try {
-                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeel());
-                } catch (Exception ex) {
-                    System.err.println("Failed to set look and feel: " + ex.getMessage());
-                }
-            }
-            
-            new MainFrame().setVisible(true);
-        });
+        SwingUtilities.invokeLater(MainFrame::run);
     }
 }
