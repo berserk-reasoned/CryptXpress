@@ -1,4 +1,4 @@
--- Setup.sql
+-- setup.sql
 
 CREATE DATABASE IF NOT EXISTS file_encryptor_db
     CHARACTER SET utf8mb4
