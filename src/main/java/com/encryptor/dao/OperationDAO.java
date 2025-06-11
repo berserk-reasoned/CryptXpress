@@ -14,20 +14,19 @@ import java.util.List;
 public class OperationDAO {
 
     /**
-     * Logs an operation to the database.
-     * @param record the operation record to log
-     * @return true if logging was successful, false otherwise
+     * Saves an operation to the database.
+     * @param record the operation record to save
+     * @throws SQLException if database operation fails
      */
-    public boolean logOperation(OperationRecord record) {
+    public void saveOperation(OperationRecord record) throws SQLException {
         if (record == null || !record.isValid()) {
-            System.err.println("Invalid operation record provided for logging.");
-            return false;
+            throw new IllegalArgumentException("Invalid operation record provided for saving.");
         }
 
         String query = """
             INSERT INTO operation_history
-            (file_name, original_path, operation_type, encryption_method, timestamp, file_size, status, error_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (operation, method, input_file, output_file, timestamp, success, error_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """;
 
         Connection conn = null;
@@ -35,24 +34,89 @@ public class OperationDAO {
             conn = DatabaseConnection.getConnection();
 
             try (PreparedStatement stmt = conn.prepareStatement(query)) {
-                stmt.setString(1, record.fileName());
-                stmt.setString(2, record.originalPath());
-                stmt.setString(3, record.operationType());
-                stmt.setString(4, record.encryptionMethod());
+                stmt.setString(1, record.operationType());
+                stmt.setString(2, record.encryptionMethod());
+                stmt.setString(3, record.originalPath());
+                stmt.setString(4, record.outputFile()); // Need to add this field to OperationRecord
                 stmt.setTimestamp(5, Timestamp.valueOf(record.timestamp()));
-                stmt.setLong(6, record.fileSize());
-                stmt.setString(7, record.status());
-                stmt.setString(8, record.errorMessage());
+                stmt.setBoolean(6, "SUCCESS".equals(record.status()));
+                stmt.setString(7, record.errorMessage());
 
-                int rowsAffected = stmt.executeUpdate();
-                return rowsAffected > 0;
+                stmt.executeUpdate();
             }
 
         } catch (SQLException e) {
-            System.err.println("Failed to log operation to database: " + e.getMessage());
-            return false;
+            System.err.println("Failed to save operation to database: " + e.getMessage());
+            throw e;
         } finally {
             DatabaseConnection.closeConnection(conn);
+        }
+    }
+
+    /**
+     * Gets all operations from the database.
+     * @return list of all operation records
+     * @throws SQLException if database operation fails
+     */
+    public List<OperationRecord> getAllOperations() throws SQLException {
+        List<OperationRecord> operations = new ArrayList<>();
+
+        String query = """
+            SELECT operation, method, input_file, output_file, timestamp, success, error_message
+            FROM operation_history
+            ORDER BY timestamp DESC
+        """;
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+
+            try (PreparedStatement stmt = conn.prepareStatement(query);
+                 ResultSet rs = stmt.executeQuery()) {
+
+                while (rs.next()) {
+                    try {
+                        // Create record using the constructor that matches the database schema
+                        OperationRecord record = new OperationRecord(
+                                extractFileName(rs.getString("input_file")),
+                                rs.getString("input_file"),
+                                rs.getString("operation"),
+                                rs.getString("method"),
+                                0L, // file size - may need to be calculated or stored separately
+                                rs.getBoolean("success") ? "SUCCESS" : "FAILED",
+                                rs.getString("error_message"),
+                                rs.getTimestamp("timestamp").toLocalDateTime()
+                        );
+                        operations.add(record);
+                    } catch (Exception e) {
+                        System.err.println("Error parsing operation record: " + e.getMessage());
+                        // Continue processing other records
+                    }
+                }
+            }
+
+        } catch (SQLException e) {
+            System.err.println("Failed to fetch operation history from database: " + e.getMessage());
+            throw e;
+        } finally {
+            DatabaseConnection.closeConnection(conn);
+        }
+
+        return operations;
+    }
+
+    /**
+     * Logs an operation to the database.
+     * @param record the operation record to log
+     * @return true if logging was successful, false otherwise
+     */
+    public boolean logOperation(OperationRecord record) {
+        try {
+            saveOperation(record);
+            return true;
+        } catch (Exception e) {
+            System.err.println("Failed to log operation: " + e.getMessage());
+            return false;
         }
     }
 
@@ -69,8 +133,7 @@ public class OperationDAO {
         }
 
         String query = """
-            SELECT file_name, original_path, operation_type, encryption_method,
-                   timestamp, file_size, status, error_message
+            SELECT operation, method, input_file, output_file, timestamp, success, error_message
             FROM operation_history
             ORDER BY timestamp DESC
             LIMIT ?
@@ -87,12 +150,12 @@ public class OperationDAO {
                     while (rs.next()) {
                         try {
                             OperationRecord record = new OperationRecord(
-                                    rs.getString("file_name"),
-                                    rs.getString("original_path"),
-                                    rs.getString("operation_type"),
-                                    rs.getString("encryption_method"),
-                                    rs.getLong("file_size"),
-                                    rs.getString("status"),
+                                    extractFileName(rs.getString("input_file")),
+                                    rs.getString("input_file"),
+                                    rs.getString("operation"),
+                                    rs.getString("method"),
+                                    0L, // file size
+                                    rs.getBoolean("success") ? "SUCCESS" : "FAILED",
                                     rs.getString("error_message"),
                                     rs.getTimestamp("timestamp").toLocalDateTime()
                             );
@@ -112,6 +175,15 @@ public class OperationDAO {
         }
 
         return operations;
+    }
+
+    /**
+     * Extracts filename from full path
+     */
+    private String extractFileName(String fullPath) {
+        if (fullPath == null) return null;
+        int lastSeparator = Math.max(fullPath.lastIndexOf('/'), fullPath.lastIndexOf('\\'));
+        return lastSeparator >= 0 ? fullPath.substring(lastSeparator + 1) : fullPath;
     }
 
     /**
