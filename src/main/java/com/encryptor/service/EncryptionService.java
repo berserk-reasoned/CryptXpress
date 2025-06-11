@@ -3,7 +3,6 @@ package com.encryptor.service;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-import javax.crypto.spec.ChaCha20ParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
@@ -11,10 +10,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import javax.crypto.CipherInputStream;
 
 /**
  * Main encryption service providing file encryption/decryption capabilities.
- * Supports AES-256, Blowfish-128, and ChaCha20 algorithms.
+ * Supports AES-256 and Blowfish-128 algorithms.
  */
 public class EncryptionService {
 
@@ -22,13 +25,10 @@ public class EncryptionService {
     private static final int BLOWFISH_KEY_SIZE = 128;
     private static final int AES_IV_SIZE = 16;
     private static final int BLOWFISH_IV_SIZE = 8;
-    private static final int CHACHA20_NONCE_SIZE = 12;
-    private static final int CHACHA20_KEY_SIZE = 32;
 
     public enum EncryptionMethod {
         AES_256("AES-256"),
-        BLOWFISH_128("BLOWFISH-128"),
-        CHACHA20("CHACHA20");
+        BLOWFISH_128("BLOWFISH-128");
 
         private final String displayName;
 
@@ -77,9 +77,12 @@ public class EncryptionService {
             throw new CryptoException("Input file does not exist: " + inputFile);
         }
 
+        SecretKey key = null;
+        byte[] iv = null;
+
         try {
-            SecretKey key = generateKey(method);
-            byte[] iv = generateIV(method);
+            key = generateKey(method);
+            iv = generateIV(method);
             Cipher cipher = initCipher(Cipher.ENCRYPT_MODE, method, key, iv);
 
             Path encryptedFile = FileEncryptor.encrypt(inputFile, cipher);
@@ -89,6 +92,11 @@ public class EncryptionService {
 
         } catch (Exception e) {
             throw new CryptoException("Encryption failed: " + e.getMessage(), e);
+        } finally {
+            // Securely wipe key from memory
+            if (key != null) {
+                CryptoUtils.wipe(key.getEncoded());
+            }
         }
     }
 
@@ -106,40 +114,105 @@ public class EncryptionService {
             throw new CryptoException("Decryption key cannot be empty");
         }
 
+        byte[] keyBytes = null;
+
         try {
             SecretKey key = decodeKey(base64Key, method);
+            keyBytes = key.getEncoded();
 
-            // For decryption, we need to extract the IV from the encrypted file
+            // Extract IV and encrypted data from file
             byte[] fileData = Files.readAllBytes(inputFile);
             int ivSize = getIVSize(method);
 
             if (fileData.length < ivSize) {
-                throw new CryptoException("Invalid encrypted file format");
+                throw new CryptoException("Invalid encrypted file format - file too small");
             }
 
             byte[] iv = new byte[ivSize];
             System.arraycopy(fileData, 0, iv, 0, ivSize);
 
-            // Create a temporary file with just the encrypted data (without IV)
+            // Get the encrypted data (without IV)
             byte[] encryptedData = new byte[fileData.length - ivSize];
             System.arraycopy(fileData, ivSize, encryptedData, 0, encryptedData.length);
 
-            Path tempEncryptedFile = Files.createTempFile("temp_encrypted", ".tmp");
-            Files.write(tempEncryptedFile, encryptedData);
-
+            // Initialize cipher for decryption
             Cipher cipher = initCipher(Cipher.DECRYPT_MODE, method, key, iv);
-            Path decryptedFile = FileEncryptor.decrypt(tempEncryptedFile, cipher);
 
-            // Clean up temp file
-            Files.deleteIfExists(tempEncryptedFile);
+            // Generate output path based on input file name (not temp file)
+            Path decryptedFilePath = generateDecryptedOutputPath(inputFile);
 
-            return decryptedFile;
+            // Decrypt directly to the final output file
+            try (InputStream encryptedIn = new java.io.ByteArrayInputStream(encryptedData);
+                 javax.crypto.CipherInputStream cipherIn = new javax.crypto.CipherInputStream(encryptedIn, cipher);
+                 OutputStream out = Files.newOutputStream(decryptedFilePath)) {
+
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = cipherIn.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+            }
+
+            return decryptedFilePath;
 
         } catch (Exception e) {
             throw new CryptoException("Decryption failed: " + e.getMessage(), e);
+        } finally {
+            if (keyBytes != null) {
+                CryptoUtils.wipe(keyBytes);
+            }
         }
     }
 
+    /**
+     * Generates output path for decrypted files with Cryptxpress naming convention.
+     * This method should be added to EncryptionService class.
+     */
+    private Path generateDecryptedOutputPath(Path encryptedFile) {
+        String fileName = encryptedFile.getFileName().toString();
+
+        // Check if this file follows our encrypted naming convention
+        if (fileName.contains("_Cryptxpress_Encrypted")) {
+            // Extract the original name and replace with decrypted suffix
+            String decryptedFileName = fileName.replace("_Cryptxpress_Encrypted", "_Cryptxpress_Decrypted");
+            Path outputPath = encryptedFile.getParent().resolve(decryptedFileName);
+
+            // Handle conflicts
+            int counter = 1;
+            while (Files.exists(outputPath)) {
+                String baseDecryptedName = fileName.replace("_Cryptxpress_Encrypted", "_Cryptxpress_Decrypted");
+                String nameWithoutExt = baseDecryptedName.contains(".") ?
+                        baseDecryptedName.substring(0, baseDecryptedName.lastIndexOf('.')) : baseDecryptedName;
+                String extension = baseDecryptedName.contains(".") ?
+                        baseDecryptedName.substring(baseDecryptedName.lastIndexOf('.')) : "";
+
+                String conflictFileName = nameWithoutExt + "(" + counter + ")" + extension;
+                outputPath = encryptedFile.getParent().resolve(conflictFileName);
+                counter++;
+            }
+
+            return outputPath;
+        } else {
+            // For files that don't follow our convention, add the decrypted suffix
+            String nameWithoutExtension = fileName.contains(".") ?
+                    fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+            String extension = fileName.contains(".") ?
+                    fileName.substring(fileName.lastIndexOf('.')) : "";
+
+            String decryptedFileName = nameWithoutExtension + "_Cryptxpress_Decrypted" + extension;
+            Path outputPath = encryptedFile.getParent().resolve(decryptedFileName);
+
+            // Handle conflicts
+            int counter = 1;
+            while (Files.exists(outputPath)) {
+                String conflictFileName = nameWithoutExtension + "_Cryptxpress_Decrypted(" + counter + ")" + extension;
+                outputPath = encryptedFile.getParent().resolve(conflictFileName);
+                counter++;
+            }
+
+            return outputPath;
+        }
+    }
     private SecretKey generateKey(EncryptionMethod method) throws Exception {
         return switch (method) {
             case AES_256 -> {
@@ -152,26 +225,18 @@ public class EncryptionService {
                 keyGen.init(BLOWFISH_KEY_SIZE);
                 yield keyGen.generateKey();
             }
-            case CHACHA20 -> {
-                byte[] keyBytes = new byte[CHACHA20_KEY_SIZE];
-                new SecureRandom().nextBytes(keyBytes);
-                yield new SecretKeySpec(keyBytes, "ChaCha20");
-            }
         };
     }
 
     private byte[] generateIV(EncryptionMethod method) {
         int size = getIVSize(method);
-        byte[] iv = new byte[size];
-        new SecureRandom().nextBytes(iv);
-        return iv;
+        return CryptoUtils.generateRandomBytes(size);
     }
 
     private int getIVSize(EncryptionMethod method) {
         return switch (method) {
             case AES_256 -> AES_IV_SIZE;
             case BLOWFISH_128 -> BLOWFISH_IV_SIZE;
-            case CHACHA20 -> CHACHA20_NONCE_SIZE;
         };
     }
 
@@ -189,22 +254,31 @@ public class EncryptionService {
                 cipher.init(mode, key, ivSpec);
                 yield cipher;
             }
-            case CHACHA20 -> {
-                Cipher cipher = Cipher.getInstance("ChaCha20");
-                ChaCha20ParameterSpec spec = new ChaCha20ParameterSpec(iv, 1);
-                cipher.init(mode, key, spec);
-                yield cipher;
-            }
         };
     }
 
-    private SecretKey decodeKey(String base64Key, EncryptionMethod method) {
-        byte[] keyBytes = Base64.getDecoder().decode(base64Key);
-        String algorithm = switch (method) {
-            case AES_256 -> "AES";
-            case BLOWFISH_128 -> "Blowfish";
-            case CHACHA20 -> "ChaCha20";
-        };
-        return new SecretKeySpec(keyBytes, algorithm);
+    private SecretKey decodeKey(String base64Key, EncryptionMethod method) throws CryptoException {
+        try {
+            byte[] keyBytes = Base64.getDecoder().decode(base64Key);
+            String algorithm = switch (method) {
+                case AES_256 -> "AES";
+                case BLOWFISH_128 -> "Blowfish";
+            };
+
+            // Validate key size
+            int expectedSize = switch (method) {
+                case AES_256 -> AES_KEY_SIZE / 8; // Convert bits to bytes
+                case BLOWFISH_128 -> BLOWFISH_KEY_SIZE / 8;
+            };
+
+            if (keyBytes.length != expectedSize) {
+                throw new CryptoException("Invalid key size for " + method +
+                        ". Expected " + expectedSize + " bytes, got " + keyBytes.length);
+            }
+
+            return new SecretKeySpec(keyBytes, algorithm);
+        } catch (IllegalArgumentException e) {
+            throw new CryptoException("Invalid Base64 key format", e);
+        }
     }
 }
