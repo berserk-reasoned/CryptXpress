@@ -1,44 +1,31 @@
 package com.encryptor.ui;
 
-import com.encryptor.dao.OperationDAO;
 import com.encryptor.model.OperationRecord;
-import com.encryptor.service.EncryptionService;
-import com.encryptor.service.EncryptionService.CryptoException;
 import com.encryptor.service.EncryptionService.EncryptionMethod;
-import com.encryptor.service.EncryptionService.EncryptionResult;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Random;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.prefs.Preferences;
 
 /**
  * Minimal GUI frame for CryptXpress application.
  * Inspired by clean, artistic design principles.
+ * Now uses MVC pattern with CryptoController.
  */
-public class MainFrame extends JFrame {
-    private final EncryptionService cryptoService = new EncryptionService();
-    private final OperationDAO operationDAO = new OperationDAO();
-    private final ExecutorService executorService = Executors.newFixedThreadPool(2);
+public class MainFrame extends JFrame implements CryptoController.CryptoControllerListener {
+    private final CryptoController controller;
     private final Random random = new Random();
 
     // State management
-    private Path currentFile;
     private String currentView = "HOME";
+    private EncryptionMethod selectedMethod = EncryptionMethod.AES_256;
 
     // Colors matching the aesthetic
     private static final Color BACKGROUND_COLOR = new Color(240, 240, 240);
@@ -52,7 +39,15 @@ public class MainFrame extends JFrame {
     private JPanel contentPanel;
     private JLabel statusLabel;
 
+    // UI Components that need to be accessed across methods
+    private JTextArea keyInputArea;
+    private JComboBox<EncryptionMethod> methodComboBox;
+    private JTextArea historyTextArea;
+
     public MainFrame() {
+        this.controller = new CryptoController();
+        this.controller.setListener(this);
+
         initializeUI();
         showHomeView();
 
@@ -162,18 +157,18 @@ public class MainFrame extends JFrame {
         for (int i = 0; i < 3 + random.nextInt(3); i++) {
             int choice = random.nextInt(4); // 0-2: pixel art, 3: cube
             int size = 25 + random.nextInt(30); // Make doodles bigger (25-55px)
-            int x = random.nextInt(width - size*2);
-            int y = random.nextInt(height - size*2);
+            int x = random.nextInt(Math.max(1, width - size*2));
+            int y = random.nextInt(Math.max(1, height - size*2));
 
             switch (choice) {
                 case 0: // Single panda
-                    drawPixelArt(g2d, pandaPattern, x, y, size/8);
+                    drawPixelArt(g2d, pandaPattern, x, y, Math.max(1, size/8));
                     break;
                 case 1: // Pandas with bamboo
-                    drawPixelArt(g2d, pandasWithBambooPattern, x, y, size/12);
+                    drawPixelArt(g2d, pandasWithBambooPattern, x, y, Math.max(1, size/12));
                     break;
                 case 2: // Cloud
-                    drawPixelArt(g2d, cloudPattern, x, y, size/10);
+                    drawPixelArt(g2d, cloudPattern, x, y, Math.max(1, size/10));
                     break;
                 default: // Cube (original)
                     if (random.nextBoolean()) {
@@ -268,7 +263,9 @@ public class MainFrame extends JFrame {
         contentPanel.add(buttonPanel);
         contentPanel.add(Box.createVerticalGlue());
 
-        updateStatus("Ready");
+        // Clear file selection when returning to home
+        controller.clearFileSelection();
+
         refreshUI();
     }
 
@@ -328,11 +325,11 @@ public class MainFrame extends JFrame {
 
         // Encryption method (shown only after file selection)
         JPanel methodPanel = createMethodSelectionPanel();
-        methodPanel.setVisible(currentFile != null);
+        methodPanel.setVisible(controller.getCurrentFile() != null);
 
         // Action button
         JButton actionBtn = createActionButton("ENCRYPT FILE", this::performEncryption);
-        actionBtn.setVisible(currentFile != null);
+        actionBtn.setVisible(controller.getCurrentFile() != null);
 
         contentPanel.add(backBtn);
         contentPanel.add(Box.createVerticalStrut(30));
@@ -367,15 +364,15 @@ public class MainFrame extends JFrame {
 
         // Key input (shown after file selection)
         JPanel keyPanel = createKeyInputPanel();
-        keyPanel.setVisible(currentFile != null);
+        keyPanel.setVisible(controller.getCurrentFile() != null);
 
-        // Method selection (shown after key input)
+        // Method selection (shown after file selection)
         JPanel methodPanel = createMethodSelectionPanel();
-        methodPanel.setVisible(currentFile != null);
+        methodPanel.setVisible(controller.getCurrentFile() != null);
 
         // Action button
         JButton actionBtn = createActionButton("DECRYPT FILE", this::performDecryption);
-        actionBtn.setVisible(currentFile != null);
+        actionBtn.setVisible(controller.getCurrentFile() != null);
 
         contentPanel.add(backBtn);
         contentPanel.add(Box.createVerticalStrut(30));
@@ -416,7 +413,8 @@ public class MainFrame extends JFrame {
         contentPanel.add(Box.createVerticalStrut(40));
         contentPanel.add(historyPanel);
 
-        loadOperationHistory();
+        // Load history through controller
+        controller.loadOperationHistory();
         refreshUI();
     }
 
@@ -443,6 +441,7 @@ public class MainFrame extends JFrame {
         promptLabel.setForeground(Color.GRAY);
         promptLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
+        Path currentFile = controller.getCurrentFile();
         JButton selectBtn = new JButton(currentFile == null ? "Choose File" : currentFile.getFileName().toString());
         selectBtn.setFont(new Font("Courier New", Font.PLAIN, 14));
         selectBtn.setForeground(TEXT_COLOR);
@@ -455,14 +454,7 @@ public class MainFrame extends JFrame {
         selectBtn.setFocusPainted(false);
         selectBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
 
-        selectBtn.addActionListener(e -> {
-            selectFile();
-            if (currentView.equals("ENCRYPT")) {
-                showEncryptView();
-            } else if (currentView.equals("DECRYPT")) {
-                showDecryptView();
-            }
-        });
+        selectBtn.addActionListener(e -> controller.selectFile(this));
 
         panel.add(promptLabel);
         panel.add(Box.createVerticalStrut(15));
@@ -481,14 +473,16 @@ public class MainFrame extends JFrame {
         label.setForeground(Color.GRAY);
         label.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JComboBox<EncryptionMethod> methodCombo = new JComboBox<>(EncryptionMethod.values());
-        methodCombo.setFont(new Font("Courier New", Font.PLAIN, 14));
-        methodCombo.setMaximumSize(new Dimension(200, 30));
-        methodCombo.setAlignmentX(Component.CENTER_ALIGNMENT);
+        methodComboBox = new JComboBox<>(EncryptionMethod.values());
+        methodComboBox.setFont(new Font("Courier New", Font.PLAIN, 14));
+        methodComboBox.setMaximumSize(new Dimension(200, 30));
+        methodComboBox.setAlignmentX(Component.CENTER_ALIGNMENT);
+        methodComboBox.setSelectedItem(selectedMethod);
+        methodComboBox.addActionListener(e -> selectedMethod = (EncryptionMethod) methodComboBox.getSelectedItem());
 
         panel.add(label);
         panel.add(Box.createVerticalStrut(10));
-        panel.add(methodCombo);
+        panel.add(methodComboBox);
 
         return panel;
     }
@@ -503,16 +497,16 @@ public class MainFrame extends JFrame {
         label.setForeground(Color.GRAY);
         label.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JTextArea keyArea = new JTextArea(3, 40);
-        keyArea.setFont(new Font("Courier New", Font.PLAIN, 11));
-        keyArea.setBorder(BorderFactory.createCompoundBorder(
+        keyInputArea = new JTextArea(3, 40);
+        keyInputArea.setFont(new Font("Courier New", Font.PLAIN, 11));
+        keyInputArea.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(BORDER_COLOR, 1),
                 new EmptyBorder(10, 10, 10, 10)
         ));
-        keyArea.setLineWrap(true);
-        keyArea.setWrapStyleWord(true);
+        keyInputArea.setLineWrap(true);
+        keyInputArea.setWrapStyleWord(true);
 
-        JScrollPane scrollPane = new JScrollPane(keyArea);
+        JScrollPane scrollPane = new JScrollPane(keyInputArea);
         scrollPane.setMaximumSize(new Dimension(400, 80));
         scrollPane.setAlignmentX(Component.CENTER_ALIGNMENT);
 
@@ -544,86 +538,27 @@ public class MainFrame extends JFrame {
         panel.setMaximumSize(new Dimension(600, 300));
 
         // Simple text area for history
-        JTextArea historyArea = new JTextArea(15, 50);
-        historyArea.setFont(new Font("Courier New", Font.PLAIN, 11));
-        historyArea.setEditable(false);
-        historyArea.setBorder(new EmptyBorder(10, 10, 10, 10));
+        historyTextArea = new JTextArea(15, 50);
+        historyTextArea.setFont(new Font("Courier New", Font.PLAIN, 11));
+        historyTextArea.setEditable(false);
+        historyTextArea.setBorder(new EmptyBorder(10, 10, 10, 10));
+        historyTextArea.setText("Loading history...");
 
-        JScrollPane scrollPane = new JScrollPane(historyArea);
+        JScrollPane scrollPane = new JScrollPane(historyTextArea);
         scrollPane.setBorder(BorderFactory.createLineBorder(BORDER_COLOR, 1));
 
         panel.add(scrollPane, BorderLayout.CENTER);
         return panel;
     }
 
-    // Original methods adapted for minimal UI
-    private void selectFile() {
-        JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-
-        Preferences prefs = Preferences.userNodeForPackage(MainFrame.class);
-        String lastDir = prefs.get("last_directory", System.getProperty("user.home"));
-        fileChooser.setCurrentDirectory(new File(lastDir));
-
-        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            currentFile = fileChooser.getSelectedFile().toPath();
-            prefs.put("last_directory", currentFile.getParent().toString());
-            updateStatus("File selected: " + currentFile.getFileName());
-        }
-    }
-
     private void performEncryption() {
-        if (!validateFileSelection()) return;
-
-        updateStatus("Encrypting file...");
-
-        executorService.submit(() -> {
-            try {
-                EncryptionMethod method = EncryptionMethod.AES_256; // Default for now
-                EncryptionResult result = cryptoService.encryptFile(currentFile, method);
-
-                SwingUtilities.invokeLater(() -> {
-                    showKeyDisplay(result.getBase64Key(), "Encryption completed successfully!");
-                    currentFile = null; // Clear selection
-                });
-
-            } catch (CryptoException | IOException e) {
-                SwingUtilities.invokeLater(() -> {
-                    JOptionPane.showMessageDialog(this, "Encryption failed: " + e.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
-                    updateStatus("Encryption failed");
-                });
-            }
-        });
+        // Use controller to perform encryption
+        controller.encryptFile(selectedMethod);
     }
 
     private void performDecryption() {
-        if (!validateFileSelection()) return;
-
-        updateStatus("Decrypting file...");
-
-        executorService.submit(() -> {
-            try {
-                String key = "dummy_key"; // Get from UI component
-                EncryptionMethod method = EncryptionMethod.AES_256;
-                Path decryptedFile = cryptoService.decryptFile(currentFile, key, method);
-
-                SwingUtilities.invokeLater(() -> {
-                    JOptionPane.showMessageDialog(this, "Decryption completed successfully!",
-                            "Success", JOptionPane.INFORMATION_MESSAGE);
-                    updateStatus("Decryption completed");
-                    currentFile = null; // Clear selection
-                    showHomeView();
-                });
-
-            } catch (CryptoException | IOException e) {
-                SwingUtilities.invokeLater(() -> {
-                    JOptionPane.showMessageDialog(this, "Decryption failed: " + e.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
-                    updateStatus("Decryption failed");
-                });
-            }
-        });
+        String key = keyInputArea != null ? keyInputArea.getText() : null;
+        controller.decryptFile(key, selectedMethod);
     }
 
     private void showKeyDisplay(String key, String message) {
@@ -634,9 +569,9 @@ public class MainFrame extends JFrame {
         messageLabel.setForeground(TEXT_COLOR);
         messageLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel keyLabel = new JLabel("Generated Key:");
+        JLabel keyLabel = new JLabel("Generated Key (SAVE THIS!):");
         keyLabel.setFont(new Font("Courier New", Font.PLAIN, 12));
-        keyLabel.setForeground(Color.GRAY);
+        keyLabel.setForeground(ACCENT_COLOR);
         keyLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         JTextArea keyArea = new JTextArea(key, 4, 50);
@@ -645,9 +580,10 @@ public class MainFrame extends JFrame {
         keyArea.setLineWrap(true);
         keyArea.setWrapStyleWord(true);
         keyArea.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(BORDER_COLOR, 1),
+                BorderFactory.createLineBorder(ACCENT_COLOR, 2),
                 new EmptyBorder(10, 10, 10, 10)
         ));
+        keyArea.setBackground(new Color(255, 250, 250));
 
         JScrollPane scrollPane = new JScrollPane(keyArea);
         scrollPane.setMaximumSize(new Dimension(500, 100));
@@ -658,7 +594,7 @@ public class MainFrame extends JFrame {
             java.awt.datatransfer.StringSelection selection =
                     new java.awt.datatransfer.StringSelection(key);
             java.awt.Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, null);
-            updateStatus("Key copied to clipboard");
+            onOperationCompleted("Key copied to clipboard");
         });
 
         JButton homeBtn = createMinimalButton("Back to Home");
@@ -679,33 +615,75 @@ public class MainFrame extends JFrame {
         refreshUI();
     }
 
-    private boolean validateFileSelection() {
-        if (currentFile == null) {
-            JOptionPane.showMessageDialog(this, "Please select a file first.",
-                    "No File Selected", JOptionPane.WARNING_MESSAGE);
-            return false;
-        }
-        return true;
-    }
-
-    private void loadOperationHistory() {
-        // Simplified for minimal UI
-        updateStatus("History loaded");
-    }
-
-    private void updateStatus(String message) {
-        statusLabel.setText(message);
-    }
-
     private void refreshUI() {
         contentPanel.revalidate();
         contentPanel.repaint();
+        repaint(); // Repaint the whole frame to refresh doodles
     }
 
     private void cleanup() {
-        if (executorService != null && !executorService.isShutdown()) {
-            executorService.shutdown();
-        }
+        controller.shutdown();
+    }
+
+    // CryptoControllerListener implementation
+    @Override
+    public void onOperationStarted(String message) {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText(message);
+            // Optionally disable buttons during operation
+        });
+    }
+
+    @Override
+    public void onOperationCompleted(String message) {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText(message);
+            if (currentView.equals("DECRYPT")) {
+                JOptionPane.showMessageDialog(this, message, "Success", JOptionPane.INFORMATION_MESSAGE);
+                showHomeView();
+            }
+        });
+    }
+
+    @Override
+    public void onOperationFailed(String error) {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText("Operation failed");
+            JOptionPane.showMessageDialog(this, error, "Error", JOptionPane.ERROR_MESSAGE);
+        });
+    }
+
+    @Override
+    public void onKeyGenerated(String key, String message) {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText("Encryption completed successfully");
+            showKeyDisplay(key, message);
+        });
+    }
+
+    @Override
+    public void onFileSelected(Path file) {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText("File selected: " + file.getFileName());
+            // Refresh the current view to show/hide components based on file selection
+            if (currentView.equals("ENCRYPT")) {
+                showEncryptView();
+            } else if (currentView.equals("DECRYPT")) {
+                showDecryptView();
+            }
+        });
+    }
+
+    @Override
+    public void onHistoryLoaded(List<OperationRecord> history) {
+        SwingUtilities.invokeLater(() -> {
+            if (historyTextArea != null) {
+                String formattedHistory = controller.formatOperationHistory(history);
+                historyTextArea.setText(formattedHistory);
+                historyTextArea.setCaretPosition(0); // Scroll to top
+            }
+            statusLabel.setText("History loaded (" + history.size() + " operations)");
+        });
     }
 
     public static void main(String[] args) {
