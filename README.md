@@ -4,7 +4,47 @@ CryptXpress
 
 ---
 
-## Features
+
+
+1. Core Feature Implementation 
+- Supports **AES-256**, **Blowfish-128** algorithms.
+- Modular architecture separates GUI, encryption logic, and database operations.
+- Provides seamless **file encryption/decryption** with password protection and key-based handling.
+
+2. Error Handling and Robustness 
+- Catches invalid file types, incorrect keys, missing configurations.
+- Uses exception classes like `CryptoException` for controlled failure points.
+- Gracefully handles DB connectivity and IO exceptions.
+
+3. Integration of Components 
+- Combines GUI (Swing + FlatLaf) with backend cryptographic logic and MySQL DB.
+- Integrated DAO pattern for logging encryption operations in a persistent store.
+
+4. Event Handling and Processing 
+- Event-driven interface with responsive **buttons**, **progress bars**, and **dialogs**.
+- GUI responds instantly to user actions like file selection, method switching, etc.
+
+5. Data Validation 
+- Validates:
+  - File existence
+  - Key/password format
+  - DB connectivity
+- Prevents empty or invalid fields in GUI inputs.
+
+6. Code Quality & Innovative Features 
+- Java 17 with **clean code practices**, modular folder structure, and thread-safe DB access.
+- Innovative: Supports **multiple encryption schemes** with user-selectable options.
+- FlatLaf theme for modern UI and randomly generating pixel arts.
+
+7. Project Documentation 
+- This `README.md` provides:
+  - Setup instructions
+  - Feature breakdown
+  - Use
+
+---
+
+Features
 
 * AES-256, Blowfish-128, and ChaCha20 encryption support
 * Swing GUI with FlatLaf theming
@@ -16,7 +56,7 @@ CryptXpress
 
 ---
 
-## Prerequisites
+Prerequisites
 
 Ensure the following are installed:
 
@@ -27,9 +67,9 @@ Ensure the following are installed:
 
 ---
 
-## Project Setup
+Project Setup
 
-### 1. Clone the Repository
+1. Clone the Repository
 
 Clone the project or extract the provided zip file into your working directory.
 
@@ -37,13 +77,13 @@ Clone the project or extract the provided zip file into your working directory.
 git clone https://github.com/your-repo/CryptXpress.git
 ```
 
-### 2. Import into IntelliJ
+2. Import into IntelliJ
 
 * Open IntelliJ IDEA.
 * Select **Open** and navigate to the extracted folder.
 * IntelliJ will automatically detect the Maven project and import dependencies.
 
-### 3. Configure SDK and Language Level
+3. Configure SDK and Language Level
 
 * Go to **File → Project Structure → Project**
 * Set **Project SDK** to Java 17
@@ -51,9 +91,9 @@ git clone https://github.com/your-repo/CryptXpress.git
 
 ---
 
-## Database Configuration
+Database Configuration
 
-### 1. Create Database
+1. Create Database
 
 Use the provided SQL script:
 
@@ -67,7 +107,7 @@ Execute the script in your MySQL client or IDE to create:
 * Table: `operation_history`
 * User: `cryptxpress` with limited permissions
 
-### 2. Configure Credentials
+2. Configure Credentials
 
 Open:
 
@@ -87,9 +127,9 @@ db.password=U2VjdXJlUGFzczEyMyE=
 
 ---
 
-## Running the Application
+Running the Application
 
-### 1. Set the Main Class
+1. Set the Main Class
 
 In IntelliJ:
 
@@ -108,7 +148,7 @@ Alternatively, right-click `MainFrame.java` → **Run**
 
 ---
 
-## Using CryptXpress
+Using CryptXpress
 
 1. Launch the GUI
 2. Select a file to encrypt or decrypt
@@ -118,7 +158,7 @@ Alternatively, right-click `MainFrame.java` → **Run**
 
 ---
 
-## Project Structure Overview
+Project Structure Overview
 
 ```
 src/main/java/com/encryptor/
@@ -128,7 +168,10 @@ src/main/java/com/encryptor/
 │   ├── EncryptionService.java
 │   ├── FileEncryptor.java
 │   └── CryptoUtils.java
-├── ui/MainFrame.java
+├── ui
+     |___/MainFrame.java
+     |___/CryptoController.java
+      
 └── util/DatabaseConnection.java
 
 src/main/resources/
@@ -138,18 +181,7 @@ database/
 └── setup.sql
 ```
 
----
-
-## Evaluation Considerations
-
-* Modular design using Java 17 features (e.g., records)
-* Clean separation of concerns (UI, logic, database)
-* Exception handling and code documentation present
-* Fully functional as a standalone application
-
----
-
-## Notes
+Notes
 
 * Compatible with Java 17 and Maven standard directory structure
 * Uses Bouncy Castle for cryptographic support (configured via Maven)
